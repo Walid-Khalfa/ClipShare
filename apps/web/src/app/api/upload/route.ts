@@ -1,0 +1,191 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
+import { checkRateLimit, RATE_LIMIT_CONFIGS } from '@/lib/rate-limit'
+import { z } from 'zod'
+
+const UPLOAD_ENDPOINT = '/api/upload'
+
+const initiateSchema = z.object({
+  recordingId: z.string(),
+  contentType: z.string(),
+  fileSize: z.number(),
+})
+
+const completeSchema = z.object({
+  recordingId: z.string(),
+  path: z.string(),
+})
+
+// POST /api/upload/initiate - Start upload
+export async function POST(request: NextRequest) {
+  try {
+    // Check rate limit using database-backed solution
+    const rateLimitResult = await checkRateLimit(request, UPLOAD_ENDPOINT)
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests', retryAfter: rateLimitResult.resetAt },
+        {
+          status: 429,
+          headers: rateLimitResult.resetAt ? {
+            'Retry-After': Math.ceil((rateLimitResult.resetAt.getTime() - Date.now()) / 1000).toString()
+          } : {}
+        }
+      )
+    }
+
+    // Authenticate
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    const { searchParams } = new URL(request.url)
+    const action = searchParams.get('action')
+
+    const jsonBody = await request.json()
+    
+    if (!action || !['initiate', 'complete', 'abort'].includes(action)) {
+      return NextResponse.json(
+        { error: 'Invalid or missing action parameter. Use ?action=initiate, ?action=complete, or ?action=abort' },
+        { status: 400 }
+      )
+    }
+    
+    let body: z.infer<typeof initiateSchema> | z.infer<typeof completeSchema> | { recordingId: string }
+    
+    if (action === 'initiate') {
+      body = initiateSchema.parse(jsonBody)
+    } else if (action === 'complete') {
+      body = completeSchema.parse(jsonBody)
+    } else {
+      body = { recordingId: z.string().parse(jsonBody.recordingId) }
+    }
+
+    const supabaseAdmin = createAdminClient()
+
+    if (action === 'initiate') {
+      const { recordingId } = body as { recordingId: string; contentType: string }
+
+      // Verify ownership
+      const { data: recording, error: fetchError } = await supabaseAdmin
+        .from('recordings')
+        .select('*')
+        .eq('id', recordingId)
+        .eq('user_id', user.id)
+        .single()
+
+      if (fetchError || !recording) {
+        return NextResponse.json(
+          { error: 'Recording not found' },
+          { status: 404 }
+        )
+      }
+
+      const path = `uploads/${user.id}/${recordingId}/raw`
+
+      const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+        .from('recordings')
+        .createSignedUploadUrl(path)
+
+      if (uploadError) {
+        return NextResponse.json(
+          { error: 'Failed to create upload URL' },
+          { status: 500 }
+        )
+      }
+
+      await supabaseAdmin
+        .from('recordings')
+        .update({
+          status: 'UPLOADING',
+          raw_path: path,
+        })
+        .eq('id', recordingId)
+
+      return NextResponse.json({
+        uploadUrl: uploadData.signedUrl,
+        path,
+      })
+    }
+
+    if (action === 'complete') {
+      const { recordingId } = body as { recordingId: string }
+
+      // Verify ownership
+      const { data: recording, error: fetchError } = await supabaseAdmin
+        .from('recordings')
+        .select('*')
+        .eq('id', recordingId)
+        .eq('user_id', user.id)
+        .single()
+
+      if (fetchError || !recording) {
+        return NextResponse.json(
+          { error: 'Recording not found' },
+          { status: 404 }
+        )
+      }
+
+      await supabaseAdmin
+        .from('recordings')
+        .update({
+          status: 'UPLOADED',
+        })
+        .eq('id', recordingId)
+
+      return NextResponse.json({ success: true, status: 'UPLOADED' })
+    }
+
+    if (action === 'abort') {
+      const { recordingId } = z.object({ recordingId: z.string() }).parse(jsonBody)
+
+      // Verify ownership
+      const { data: recording, error: fetchError } = await supabaseAdmin
+        .from('recordings')
+        .select('*')
+        .eq('id', recordingId)
+        .eq('user_id', user.id)
+        .single()
+
+      if (fetchError || !recording) {
+        return NextResponse.json(
+          { error: 'Recording not found' },
+          { status: 404 }
+        )
+      }
+
+      if (recording.raw_path) {
+        await supabaseAdmin.storage
+          .from('recordings')
+          .remove([recording.raw_path])
+      }
+
+      await supabaseAdmin
+        .from('recordings')
+        .update({
+          status: 'CREATED',
+          raw_path: null,
+        })
+        .eq('id', recordingId)
+
+      return NextResponse.json({ success: true })
+    }
+
+    return NextResponse.json(
+      { error: 'Invalid action' },
+      { status: 400 }
+    )
+  } catch (error) {
+    console.error('Upload error:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
