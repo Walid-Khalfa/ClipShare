@@ -1,3 +1,5 @@
+import { createLogger } from './logger';
+
 /**
  * Environment validation utilities for ClipShare
  * 
@@ -7,6 +9,8 @@
  * Using default or insecure secrets will cause authentication failures
  * and may expose user sessions to security vulnerabilities.
  */
+
+const logger = createLogger({ component: 'env-validation' });
 
 const DEFAULT_JWT_SECRETS = [
   'dev-secret-change-in-production',
@@ -28,7 +32,7 @@ export function validateEnvironment(): void {
   if (!jwtSecret) {
     // In development or build time, warn but don't block
     if (process.env.NODE_ENV === 'development' || isBuildTime) {
-      console.warn('WARNING: JWT_SECRET is not set. Authentication may not work correctly.');
+      logger.warn({ jwtSecretSet: false }, 'WARNING: JWT_SECRET is not set. Authentication may not work correctly.');
       return;
     }
     // In production, block startup
