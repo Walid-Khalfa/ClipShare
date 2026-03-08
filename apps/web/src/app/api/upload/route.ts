@@ -3,13 +3,14 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { checkRateLimit, RATE_LIMIT_CONFIGS } from '@/lib/rate-limit'
 import { z } from 'zod'
+import { MAX_FILE_SIZE, validateFileSize } from '@/lib/env'
 
 const UPLOAD_ENDPOINT = '/api/upload'
 
 const initiateSchema = z.object({
   recordingId: z.string(),
   contentType: z.string(),
-  fileSize: z.number(),
+  fileSize: z.number().min(1).max(MAX_FILE_SIZE, `File size exceeds maximum of ${MAX_FILE_SIZE / (1024 * 1024)}MB`),
 })
 
 const completeSchema = z.object({

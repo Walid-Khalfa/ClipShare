@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { MAX_FILE_SIZE, MAX_FILE_SIZE_MB } from '@/lib/env';
 
 export type RecorderState = 'idle' | 'ready' | 'recording' | 'paused' | 'stopped';
 
@@ -241,6 +242,16 @@ export function useRecorder(): UseRecorderReturn {
       
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: mimeType });
+        
+        // Validate file size before returning
+        if (blob.size > MAX_FILE_SIZE) {
+          setError(`Recording too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.`);
+          setState('idle');
+          stream?.getTracks().forEach(track => track.stop());
+          reject(new Error(`Recording too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.`));
+          return;
+        }
+        
         setState('stopped');
         
         stream?.getTracks().forEach(track => track.stop());
