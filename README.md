@@ -121,17 +121,39 @@ All API routes are under `/api/*`:
 - ✅ Row Level Security (RLS) on all database tables
 - ✅ Presigned URLs for secure uploads
 - ✅ HTTP-only secure cookies for sessions
-- ✅ Rate limiting on all API endpoints
-- ✅ Security headers (CSP, HSTS, X-Frame-Options)
+- ✅ Rate limiting on all API endpoints (5 req/hour for auth, 100 req/min for general)
+- ✅ CSRF protection via Origin header validation
+- ✅ Input sanitization to prevent XSS attacks
+- ✅ Request body size limits (1MB)
+- ✅ Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
+- ✅ Secure session management (15 min access tokens, 7 day refresh tokens)
 
 ## Production Considerations
 
 - [x] Session refresh tokens implemented
-- [x] Rate limiting implemented
+- [x] Rate limiting implemented (database-backed, serverless-safe)
+- [x] CSRF protection implemented
+- [x] Input sanitization implemented
+- [x] XSS prevention implemented
 - [ ] Add CDN for video delivery (recommended for scale)
 - [ ] Add video transcoding for multiple quality levels (future)
 - [ ] Implement webhooks for processing completion (future)
 - [x] Logging and monitoring (via Vercel)
+
+## Testing
+
+Run the test suite:
+
+```bash
+# Run all tests
+pnpm test
+
+# Run API tests only
+cd apps/api && pnpm test
+
+# Run web tests only
+cd apps/web && pnpm test
+```
 
 ## License
 

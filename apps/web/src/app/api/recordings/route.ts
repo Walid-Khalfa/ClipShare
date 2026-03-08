@@ -17,6 +17,34 @@ const updateRecordingSchema = z.object({
   description: z.string().optional(),
 })
 
+// CSRF protection middleware for state-changing operations
+function checkCsrfForMutations(request: NextRequest): NextResponse | null {
+  const stateChangingMethods = ['POST', 'PATCH', 'DELETE'];
+  
+  if (stateChangingMethods.includes(request.method)) {
+    // Check Origin header for CSRF protection
+    const origin = request.headers.get('origin');
+    const allowedOrigin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    if (origin && origin !== allowedOrigin) {
+      return NextResponse.json(
+        { error: 'Invalid origin' },
+        { status: 403 }
+      );
+    }
+
+    // Validate Content-Type header
+    const contentType = request.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      return NextResponse.json(
+        { error: 'Content-Type must be application/json' },
+        { status: 400 }
+      );
+    }
+  }
+
+  return null;
+}
+
 // GET /api/recordings - List all recordings for authenticated user
 export async function GET(request: NextRequest) {
   console.log('=== GET /api/recordings STARTED ===')
@@ -110,6 +138,10 @@ export async function GET(request: NextRequest) {
 // POST /api/recordings - Create a new recording
 export async function POST(request: NextRequest) {
   try {
+    // CSRF protection
+    const csrfError = checkCsrfForMutations(request);
+    if (csrfError) return csrfError;
+
     // Check rate limit using database-backed solution
     const rateLimitResult = await checkRateLimit(request, RECORDINGS_ENDPOINT)
     if (!rateLimitResult.allowed) {
@@ -170,6 +202,10 @@ export async function POST(request: NextRequest) {
 // PATCH /api/recordings - Update a recording
 export async function PATCH(request: NextRequest) {
   try {
+    // CSRF protection
+    const csrfError = checkCsrfForMutations(request);
+    if (csrfError) return csrfError;
+
     // Check rate limit using database-backed solution
     const rateLimitResult = await checkRateLimit(request, RECORDINGS_ENDPOINT)
     if (!rateLimitResult.allowed) {
@@ -253,6 +289,10 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/recordings - Delete a recording
 export async function DELETE(request: NextRequest) {
   try {
+    // CSRF protection
+    const csrfError = checkCsrfForMutations(request);
+    if (csrfError) return csrfError;
+
     // Check rate limit using database-backed solution
     const rateLimitResult = await checkRateLimit(request, RECORDINGS_ENDPOINT)
     if (!rateLimitResult.allowed) {
