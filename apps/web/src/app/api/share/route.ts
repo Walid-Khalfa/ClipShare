@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const shareToken = recording.share_token || crypto.randomUUID().slice(0, 12)
+    const shareToken = recording.share_token || crypto.randomUUID()
 
     const { data, error } = await supabaseAdmin
       .from('recordings')

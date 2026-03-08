@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { MAX_FILE_SIZE, MAX_FILE_SIZE_MB } from '@/lib/env';
 
 interface UploadOptions {
   recordingId: string;
@@ -25,6 +26,11 @@ export function useUpload(): UseUploadReturn {
   const [error, setError] = useState<string | null>(null);
 
   const upload = useCallback(async ({ recordingId, blob, onProgress }: UploadOptions) => {
+    // Validate file size on client-side before upload
+    if (blob.size > MAX_FILE_SIZE) {
+      throw new Error(`File too large. Maximum allowed size is ${MAX_FILE_SIZE_MB}MB.`);
+    }
+
     setIsUploading(true);
     setProgress(0);
     setError(null);

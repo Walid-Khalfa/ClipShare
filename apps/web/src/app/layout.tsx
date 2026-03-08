@@ -1,6 +1,14 @@
 import type { Metadata, Viewport } from 'next';
 import { JetBrains_Mono, Outfit } from 'next/font/google';
+import { validateEnvironment } from '@/lib/env';
 import './globals.css';
+
+// Validate environment on server startup
+// This will throw in production if JWT_SECRET is not properly configured
+// Skip validation during build time (NEXT_PHASE is set during build)
+if (!process.env.NEXT_PHASE) {
+  validateEnvironment();
+}
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
