@@ -14,6 +14,10 @@ export interface RateLimitResult {
 
 // Default rate limit configurations per endpoint
 export const RATE_LIMIT_CONFIGS: Record<string, RateLimitConfig> = {
+  '/api/auth/magic-link': {
+    maxRequests: 5,
+    windowSeconds: 3600, // 5 requests per hour (strict for auth)
+  },
   '/api/upload': {
     maxRequests: 50,
     windowSeconds: 60, // 50 requests per minute

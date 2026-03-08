@@ -33,11 +33,6 @@ Thumbs.db
 
 # Test
 coverage/
-*.test.ts
-*.test.js
-*.spec.ts
-*.spec.js
-__tests__/
 
 # Turbo
 .turbo/

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 const MAGIC_LINK_GENERIC_ERROR = 'Unable to send magic link right now'
 
@@ -20,74 +21,101 @@ function getMagicLinkErrorMessage(error: unknown): string {
 }
 
 export async function POST(request: NextRequest) {
-  console.log('=== MAGIC LINK REQUEST STARTED ===')
-  console.log('Env check:')
-  console.log('  NEXT_PUBLIC_SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL ? 'SET' : 'MISSING')
-  console.log('  SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SET' : 'MISSING')
-  console.log('  APP_URL:', process.env.APP_URL || 'NOT SET')
-  console.log('  NEXT_PUBLIC_APP_URL:', process.env.NEXT_PUBLIC_APP_URL || 'NOT SET')
+  // Rate limiting: 5 requests per hour per IP
+  const rateLimitResult = await checkRateLimit(request, '/api/auth/magic-link', { 
+    maxRequests: 5, 
+    windowSeconds: 3600 
+  });
+  
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please try again later.' },
+      { 
+        status: 429,
+        headers: rateLimitResult.resetAt ? {
+          'Retry-After': Math.ceil((rateLimitResult.resetAt.getTime() - Date.now()) / 1000).toString()
+        } : {}
+      }
+    );
+  }
+
+  // Validate Content-Type header to prevent CSRF attacks
+  const contentType = request.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    return NextResponse.json(
+      { error: 'Content-Type must be application/json' },
+      { status: 400 }
+    );
+  }
+
+  // Check Origin header for CSRF protection
+  const origin = request.headers.get('origin');
+  const allowedOrigin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  if (origin && origin !== allowedOrigin) {
+    return NextResponse.json(
+      { error: 'Invalid origin' },
+      { status: 403 }
+    );
+  }
   
   try {
-    const body = await request.json()
-    console.log('Request body:', body)
-    const { email } = body
+    const body = await request.json();
+    const { email } = body;
 
     if (!email || typeof email !== 'string') {
-      console.log('Validation failed: invalid email')
       return NextResponse.json(
         { error: 'Email is required' },
         { status: 400 }
-      )
+      );
     }
 
-    console.log('Creating Supabase admin client...')
-    const supabaseAdmin = createAdminClient()
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return NextResponse.json(
+        { error: 'Invalid email format' },
+        { status: 400 }
+      );
+    }
+
+    const supabaseAdmin = createAdminClient();
     
     const appUrl =
       process.env.APP_URL ||
       process.env.NEXT_PUBLIC_APP_URL ||
-      request.nextUrl.origin
+      request.nextUrl.origin;
 
-    console.log('App URL:', appUrl)
-    console.log('Sending OTP to:', email)
-    
     const { data, error } = await supabaseAdmin.auth.signInWithOtp({
       email,
       options: {
         emailRedirectTo: `${appUrl}/auth/verify`,
       },
-    })
-
-    console.log('Supabase response:', { data, error })
+    });
 
     if (error) {
+      // Log error securely without exposing sensitive details
       console.error('Magic link error:', {
-        message: error.message,
+        error: error.name,
         status: error.status,
-        name: error.name,
-        stack: error.stack,
-      })
+      });
       return NextResponse.json(
         { error: MAGIC_LINK_GENERIC_ERROR },
         { status: 500 }
-      )
+      );
     }
 
-    console.log('=== MAGIC LINK SUCCESS ===')
-    // Always return success to prevent email enumeration
+    // Always return success to prevent email enumeration attacks
     return NextResponse.json({
       success: true,
       message: 'If that email exists, a magic link has been sent'
-    })
+    });
   } catch (error) {
-    console.error('=== MAGIC LINK CATCH BLOCK ===')
-    console.error('Error type:', error?.constructor?.name)
-    console.error('Error message:', error instanceof Error ? error.message : String(error))
-    console.error('Error stack:', error instanceof Error ? error.stack : 'N/A')
-    console.error('Error cause:', (error as { cause?: unknown })?.cause)
+    console.error('Magic link request failed:', {
+      error: error instanceof Error ? error.name : 'Unknown',
+    });
     return NextResponse.json(
       { error: getMagicLinkErrorMessage(error) },
       { status: 500 }
-    )
+    );
   }
 }

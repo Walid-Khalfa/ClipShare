@@ -17,9 +17,37 @@ const completeSchema = z.object({
   path: z.string(),
 })
 
+// CSRF protection middleware
+function checkCsrf(request: NextRequest): NextResponse | null {
+  // Check Origin header for CSRF protection
+  const origin = request.headers.get('origin');
+  const allowedOrigin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  if (origin && origin !== allowedOrigin) {
+    return NextResponse.json(
+      { error: 'Invalid origin' },
+      { status: 403 }
+    );
+  }
+
+  // Validate Content-Type header
+  const contentType = request.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    return NextResponse.json(
+      { error: 'Content-Type must be application/json' },
+      { status: 400 }
+    );
+  }
+
+  return null;
+}
+
 // POST /api/upload/initiate - Start upload
 export async function POST(request: NextRequest) {
   try {
+    // CSRF protection
+    const csrfError = checkCsrf(request);
+    if (csrfError) return csrfError;
+
     // Check rate limit using database-backed solution
     const rateLimitResult = await checkRateLimit(request, UPLOAD_ENDPOINT)
     if (!rateLimitResult.allowed) {

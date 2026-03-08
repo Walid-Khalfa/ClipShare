@@ -30,9 +30,14 @@ export async function authRouter(fastify: FastifyInstance) {
     });
 
     if (error) {
-      console.error('Magic link error:', error.message);
+      // Log error securely without exposing sensitive details
+      console.error('Magic link request failed:', { 
+        error: error.name,
+        status: error.status 
+      });
     }
 
+    // Always return success to prevent email enumeration attacks
     return { success: true, message: 'If that email exists, a magic link has been sent' };
   });
 
@@ -64,22 +69,24 @@ export async function authRouter(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'No session created' });
     }
 
+    // Access token: 15 minutes (matches Supabase default)
+    // Refresh token: 7 days for session persistence
     reply.setCookie('sb-access-token', sessionToken, {
       path: '/',
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 30,
+      maxAge: 60 * 15, // 15 minutes
     });
 
-    // Also set refresh token for session persistence
+    // Set refresh token for session persistence (7 days)
     if (refreshToken) {
       reply.setCookie('sb-refresh-token', refreshToken, {
         path: '/',
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 30,
+        maxAge: 60 * 60 * 24 * 7, // 7 days
       });
     }
 
@@ -124,20 +131,22 @@ export async function authRouter(fastify: FastifyInstance) {
     }
 
     if (data.session) {
+      // Access token: 15 minutes (matches Supabase default)
       reply.setCookie('sb-access-token', data.session.access_token, {
         path: '/',
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 30,
+        maxAge: 60 * 15, // 15 minutes
       });
       
+      // Refresh token: 7 days for session persistence
       reply.setCookie('sb-refresh-token', data.session.refresh_token, {
         path: '/',
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 30,
+        maxAge: 60 * 60 * 24 * 7, // 7 days
       });
     }
 

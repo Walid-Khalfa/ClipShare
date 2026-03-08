@@ -2,16 +2,17 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { supabaseAdmin } from '../lib/supabase.js';
 import crypto from 'crypto';
+import { sanitizeRecordingTitle, sanitizeRecordingDescription } from '../lib/sanitize.js';
 
 const createRecordingSchema = z.object({
-  title: z.string().optional(),
+  title: z.string().max(200).optional(),
   duration: z.number().optional(),
   mimeType: z.string().optional(),
 });
 
 const updateRecordingSchema = z.object({
-  title: z.string().optional(),
-  description: z.string().optional(),
+  title: z.string().max(200).optional(),
+  description: z.string().max(2000).optional(),
 });
 
 export async function recordingsRouter(fastify: FastifyInstance) {
@@ -21,11 +22,14 @@ export async function recordingsRouter(fastify: FastifyInstance) {
     const userId = request.user.id;
     const body = createRecordingSchema.parse(request.body);
 
+    // Sanitize inputs to prevent XSS
+    const sanitizedTitle = body.title ? sanitizeRecordingTitle(body.title) : undefined;
+
     const { data, error } = await supabaseAdmin
       .from('recordings')
       .insert({
         user_id: userId,
-        title: body.title || 'Untitled Recording',
+        title: sanitizedTitle || 'Untitled Recording',
         duration: body.duration,
         mime_type: body.mimeType,
         status: 'CREATED',
@@ -104,12 +108,18 @@ export async function recordingsRouter(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Recording not found' });
     }
 
+    // Sanitize inputs to prevent XSS
+    const updates: { title?: string; description?: string } = {};
+    if (body.title !== undefined) {
+      updates.title = sanitizeRecordingTitle(body.title);
+    }
+    if (body.description !== undefined) {
+      updates.description = sanitizeRecordingDescription(body.description);
+    }
+
     const { data, error } = await supabaseAdmin
       .from('recordings')
-      .update({
-        title: body.title,
-        description: body.description,
-      })
+      .update(updates)
       .eq('id', id)
       .select()
       .single();

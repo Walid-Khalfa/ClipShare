@@ -6,9 +6,41 @@ import crypto from 'crypto'
 
 const SHARE_ENDPOINT = '/api/share'
 
+// CSRF protection middleware for state-changing operations
+function checkCsrfForMutations(request: NextRequest): NextResponse | null {
+  const stateChangingMethods = ['POST', 'DELETE'];
+  
+  if (stateChangingMethods.includes(request.method)) {
+    // Check Origin header for CSRF protection
+    const origin = request.headers.get('origin');
+    const allowedOrigin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    if (origin && origin !== allowedOrigin) {
+      return NextResponse.json(
+        { error: 'Invalid origin' },
+        { status: 403 }
+      );
+    }
+
+    // Validate Content-Type header
+    const contentType = request.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      return NextResponse.json(
+        { error: 'Content-Type must be application/json' },
+        { status: 400 }
+      );
+    }
+  }
+
+  return null;
+}
+
 // POST /api/share - Create share link for a recording
 export async function POST(request: NextRequest) {
   try {
+    // CSRF protection
+    const csrfError = checkCsrfForMutations(request);
+    if (csrfError) return csrfError;
+
     // Check rate limit using database-backed solution
     const rateLimitResult = await checkRateLimit(request, SHARE_ENDPOINT)
     if (!rateLimitResult.allowed) {
@@ -96,6 +128,10 @@ export async function POST(request: NextRequest) {
 // DELETE /api/share - Remove share link
 export async function DELETE(request: NextRequest) {
   try {
+    // CSRF protection
+    const csrfError = checkCsrfForMutations(request);
+    if (csrfError) return csrfError;
+
     // Check rate limit using database-backed solution
     const rateLimitResult = await checkRateLimit(request, SHARE_ENDPOINT)
     if (!rateLimitResult.allowed) {
