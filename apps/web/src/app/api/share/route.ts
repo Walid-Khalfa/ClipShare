@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rate-limit'
+import { getVideoCdnUrl, getThumbnailCdnUrl } from '@/lib/cdn'
+import { createRequestLogger, generateCorrelationId, logRequest, formatError } from '@/lib/logger'
 import crypto from 'crypto'
 
 const SHARE_ENDPOINT = '/api/share'
@@ -36,6 +38,14 @@ function checkCsrfForMutations(request: NextRequest): NextResponse | null {
 
 // POST /api/share - Create share link for a recording
 export async function POST(request: NextRequest) {
+  const correlationId = generateCorrelationId();
+  const logger = createRequestLogger({
+    method: 'POST',
+    url: request.url,
+    correlationId,
+  });
+  const startTime = Date.now();
+  
   try {
     // CSRF protection
     const csrfError = checkCsrfForMutations(request);
@@ -117,7 +127,14 @@ export async function POST(request: NextRequest) {
       shareUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/share/${shareToken}`,
     })
   } catch (error) {
-    console.error('Share error:', error)
+    logger.error({ error: formatError(error) }, 'Share error');
+    logRequest(logger, {
+      method: 'POST',
+      url: request.url,
+      statusCode: 500,
+      duration: Date.now() - startTime,
+      error: error instanceof Error ? error : new Error(String(error)),
+    });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -127,6 +144,14 @@ export async function POST(request: NextRequest) {
 
 // DELETE /api/share - Remove share link
 export async function DELETE(request: NextRequest) {
+  const correlationId = generateCorrelationId();
+  const logger = createRequestLogger({
+    method: 'DELETE',
+    url: request.url,
+    correlationId,
+  });
+  const startTime = Date.now();
+  
   try {
     // CSRF protection
     const csrfError = checkCsrfForMutations(request);
@@ -201,7 +226,14 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Revoke share error:', error)
+    logger.error({ error: formatError(error) }, 'Revoke share error');
+    logRequest(logger, {
+      method: 'DELETE',
+      url: request.url,
+      statusCode: 500,
+      duration: Date.now() - startTime,
+      error: error instanceof Error ? error : new Error(String(error)),
+    });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -211,6 +243,14 @@ export async function DELETE(request: NextRequest) {
 
 // GET /api/share - Get shared recording (public)
 export async function GET(request: NextRequest) {
+  const correlationId = generateCorrelationId();
+  const logger = createRequestLogger({
+    method: 'GET',
+    url: request.url,
+    correlationId,
+  });
+  const startTime = Date.now();
+  
   try {
     // Check rate limit using database-backed solution
     const rateLimitResult = await checkRateLimit(request, SHARE_ENDPOINT)
@@ -294,20 +334,20 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get public URLs
-    const { data: videoData } = supabaseAdmin.storage
-      .from('recordings')
-      .getPublicUrl(recording.processed_path)
-    
-    const videoUrl = videoData.publicUrl
+    // Get public URLs using CDN
+    const videoUrl = getVideoCdnUrl(recording.processed_path)
     
     let thumbnailUrl: string | null = null
     if (recording.thumbnail_path) {
-      const { data: thumbData } = supabaseAdmin.storage
-        .from('recordings')
-        .getPublicUrl(recording.thumbnail_path)
-      thumbnailUrl = thumbData.publicUrl
+      thumbnailUrl = getThumbnailCdnUrl(recording.thumbnail_path)
     }
+
+    logRequest(logger, {
+      method: 'GET',
+      url: request.url,
+      statusCode: 200,
+      duration: Date.now() - startTime,
+    });
 
     return NextResponse.json({
       id: recording.id,
@@ -320,7 +360,14 @@ export async function GET(request: NextRequest) {
       created_at: recording.created_at,
     })
   } catch (error) {
-    console.error('Get shared recording error:', error)
+    logger.error({ error: formatError(error) }, 'Get shared recording error');
+    logRequest(logger, {
+      method: 'GET',
+      url: request.url,
+      statusCode: 500,
+      duration: Date.now() - startTime,
+      error: error instanceof Error ? error : new Error(String(error)),
+    });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { sanitizeRecordingTitle, sanitizeRecordingDescription } from '@/lib/sanitize'
+import { createRequestLogger, generateCorrelationId, logRequest, formatError } from '@/lib/logger'
 import { z } from 'zod'
 
 const RECORDINGS_ENDPOINT = '/api/recordings'
@@ -48,6 +49,14 @@ function checkCsrfForMutations(request: NextRequest): NextResponse | null {
 
 // GET /api/recordings - List all recordings for authenticated user
 export async function GET(request: NextRequest) {
+  const correlationId = generateCorrelationId();
+  const logger = createRequestLogger({
+    method: 'GET',
+    url: request.url,
+    correlationId,
+  });
+  const startTime = Date.now();
+  
   try {
     // Check rate limit using database-backed solution
     const rateLimitResult = await checkRateLimit(request, RECORDINGS_ENDPOINT)
@@ -67,6 +76,13 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
+      logRequest(logger, {
+        method: 'GET',
+        url: request.url,
+        statusCode: 401,
+        duration: Date.now() - startTime,
+        userId: user?.id,
+      });
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -88,12 +104,28 @@ export async function GET(request: NextRequest) {
       .range(skip, skip + limit - 1)
 
     if (listError) {
-      console.error('List recordings error:', listError)
+      logger.error({ error: formatError(listError) }, 'List recordings error');
+      logRequest(logger, {
+        method: 'GET',
+        url: request.url,
+        statusCode: 500,
+        duration: Date.now() - startTime,
+        userId: user.id,
+        error: listError instanceof Error ? listError : new Error(String(listError)),
+      });
       return NextResponse.json(
         { error: 'Failed to fetch recordings' },
         { status: 500 }
       )
     }
+
+    logRequest(logger, {
+      method: 'GET',
+      url: request.url,
+      statusCode: 200,
+      duration: Date.now() - startTime,
+      userId: user.id,
+    });
 
     return NextResponse.json({
       data: recordings || [],
@@ -105,7 +137,14 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error('Get recordings error:', error)
+    logger.error({ error: formatError(error) }, 'Get recordings error');
+    logRequest(logger, {
+      method: 'GET',
+      url: request.url,
+      statusCode: 500,
+      duration: Date.now() - startTime,
+      error: error instanceof Error ? error : new Error(String(error)),
+    });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -115,6 +154,14 @@ export async function GET(request: NextRequest) {
 
 // POST /api/recordings - Create a new recording
 export async function POST(request: NextRequest) {
+  const correlationId = generateCorrelationId();
+  const logger = createRequestLogger({
+    method: 'POST',
+    url: request.url,
+    correlationId,
+  });
+  const startTime = Date.now();
+  
   try {
     // CSRF protection
     const csrfError = checkCsrfForMutations(request);
@@ -165,16 +212,39 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Create recording error:', error)
+      logger.error({ error: formatError(error) }, 'Create recording error');
+      logRequest(logger, {
+        method: 'POST',
+        url: request.url,
+        statusCode: 500,
+        duration: Date.now() - startTime,
+        userId: user.id,
+        error: error instanceof Error ? error : new Error(String(error)),
+      });
       return NextResponse.json(
         { error: 'Failed to create recording' },
         { status: 500 }
       )
     }
 
+    logRequest(logger, {
+      method: 'POST',
+      url: request.url,
+      statusCode: 201,
+      duration: Date.now() - startTime,
+      userId: user.id,
+    });
+
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Create recording error:', error)
+    logger.error({ error: formatError(error) }, 'Create recording error');
+    logRequest(logger, {
+      method: 'POST',
+      url: request.url,
+      statusCode: 500,
+      duration: Date.now() - startTime,
+      error: error instanceof Error ? error : new Error(String(error)),
+    });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -184,6 +254,14 @@ export async function POST(request: NextRequest) {
 
 // PATCH /api/recordings - Update a recording
 export async function PATCH(request: NextRequest) {
+  const correlationId = generateCorrelationId();
+  const logger = createRequestLogger({
+    method: 'PATCH',
+    url: request.url,
+    correlationId,
+  });
+  const startTime = Date.now();
+  
   try {
     // CSRF protection
     const csrfError = checkCsrfForMutations(request);
@@ -259,15 +337,39 @@ export async function PATCH(request: NextRequest) {
       .single()
 
     if (error) {
+      logger.error({ error: formatError(error) }, 'Update recording error');
+      logRequest(logger, {
+        method: 'PATCH',
+        url: request.url,
+        statusCode: 500,
+        duration: Date.now() - startTime,
+        userId: user.id,
+        error: error instanceof Error ? error : new Error(String(error)),
+      });
       return NextResponse.json(
         { error: 'Failed to update recording' },
         { status: 500 }
       )
     }
 
+    logRequest(logger, {
+      method: 'PATCH',
+      url: request.url,
+      statusCode: 200,
+      duration: Date.now() - startTime,
+      userId: user.id,
+    });
+
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Update recording error:', error)
+    logger.error({ error: formatError(error) }, 'Update recording error');
+    logRequest(logger, {
+      method: 'PATCH',
+      url: request.url,
+      statusCode: 500,
+      duration: Date.now() - startTime,
+      error: error instanceof Error ? error : new Error(String(error)),
+    });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -277,6 +379,14 @@ export async function PATCH(request: NextRequest) {
 
 // DELETE /api/recordings - Delete a recording
 export async function DELETE(request: NextRequest) {
+  const correlationId = generateCorrelationId();
+  const logger = createRequestLogger({
+    method: 'DELETE',
+    url: request.url,
+    correlationId,
+  });
+  const startTime = Date.now();
+  
   try {
     // CSRF protection
     const csrfError = checkCsrfForMutations(request);
@@ -339,15 +449,39 @@ export async function DELETE(request: NextRequest) {
       .eq('id', id)
 
     if (error) {
+      logger.error({ error: formatError(error) }, 'Delete recording error');
+      logRequest(logger, {
+        method: 'DELETE',
+        url: request.url,
+        statusCode: 500,
+        duration: Date.now() - startTime,
+        userId: user.id,
+        error: error instanceof Error ? error : new Error(String(error)),
+      });
       return NextResponse.json(
         { error: 'Failed to delete recording' },
         { status: 500 }
       )
     }
 
+    logRequest(logger, {
+      method: 'DELETE',
+      url: request.url,
+      statusCode: 200,
+      duration: Date.now() - startTime,
+      userId: user.id,
+    });
+
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Delete recording error:', error)
+    logger.error({ error: formatError(error) }, 'Delete recording error');
+    logRequest(logger, {
+      method: 'DELETE',
+      url: request.url,
+      statusCode: 500,
+      duration: Date.now() - startTime,
+      error: error instanceof Error ? error : new Error(String(error)),
+    });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

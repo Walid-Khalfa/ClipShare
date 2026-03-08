@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { checkRateLimit, RATE_LIMIT_CONFIGS } from '@/lib/rate-limit'
+import { createRequestLogger, generateCorrelationId, logRequest, formatError } from '@/lib/logger'
 import { z } from 'zod'
 import { MAX_FILE_SIZE, validateFileSize } from '@/lib/env'
 
@@ -44,6 +45,14 @@ function checkCsrf(request: NextRequest): NextResponse | null {
 
 // POST /api/upload/initiate - Start upload
 export async function POST(request: NextRequest) {
+  const correlationId = generateCorrelationId();
+  const logger = createRequestLogger({
+    method: 'POST',
+    url: request.url,
+    correlationId,
+  });
+  const startTime = Date.now();
+  
   try {
     // CSRF protection
     const csrfError = checkCsrf(request);
@@ -68,6 +77,13 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
+      logRequest(logger, {
+        method: 'POST',
+        url: request.url,
+        statusCode: 401,
+        duration: Date.now() - startTime,
+        userId: user?.id,
+      });
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -123,6 +139,15 @@ export async function POST(request: NextRequest) {
         .createSignedUploadUrl(path)
 
       if (uploadError) {
+        logger.error({ error: formatError(uploadError) }, 'Failed to create upload URL');
+        logRequest(logger, {
+          method: 'POST',
+          url: request.url,
+          statusCode: 500,
+          duration: Date.now() - startTime,
+          userId: user.id,
+          error: uploadError instanceof Error ? uploadError : new Error(String(uploadError)),
+        });
         return NextResponse.json(
           { error: 'Failed to create upload URL' },
           { status: 500 }
@@ -136,6 +161,14 @@ export async function POST(request: NextRequest) {
           raw_path: path,
         })
         .eq('id', recordingId)
+
+      logRequest(logger, {
+        method: 'POST',
+        url: request.url,
+        statusCode: 200,
+        duration: Date.now() - startTime,
+        userId: user.id,
+      });
 
       return NextResponse.json({
         uploadUrl: uploadData.signedUrl,
@@ -167,6 +200,14 @@ export async function POST(request: NextRequest) {
           status: 'UPLOADED',
         })
         .eq('id', recordingId)
+
+      logRequest(logger, {
+        method: 'POST',
+        url: request.url,
+        statusCode: 200,
+        duration: Date.now() - startTime,
+        userId: user.id,
+      });
 
       return NextResponse.json({ success: true, status: 'UPLOADED' })
     }
@@ -203,6 +244,14 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', recordingId)
 
+      logRequest(logger, {
+        method: 'POST',
+        url: request.url,
+        statusCode: 200,
+        duration: Date.now() - startTime,
+        userId: user.id,
+      });
+
       return NextResponse.json({ success: true })
     }
 
@@ -211,7 +260,14 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     )
   } catch (error) {
-    console.error('Upload error:', error)
+    logger.error({ error: formatError(error) }, 'Upload error');
+    logRequest(logger, {
+      method: 'POST',
+      url: request.url,
+      statusCode: 500,
+      duration: Date.now() - startTime,
+      error: error instanceof Error ? error : new Error(String(error)),
+    });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
