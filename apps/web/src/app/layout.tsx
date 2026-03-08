@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { JetBrains_Mono, Outfit } from 'next/font/google';
 import { validateEnvironment } from '@/lib/env';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import './globals.css';
 
 // Validate environment on server startup
@@ -54,7 +55,9 @@ export default function RootLayout({
         <meta name="theme-color" content="#0f172a" />
       </head>
       <body className="antialiased font-sans">
-        {children}
+        <ErrorBoundary section="general">
+          {children}
+        </ErrorBoundary>
       </body>
     </html>
   );

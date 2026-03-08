@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { SharePageSkeleton } from '@/components/skeletons';
 
 interface SharedRecording {
   id: string;
@@ -15,7 +17,7 @@ interface SharedRecording {
   created_at: string;
 }
 
-export default function SharePage() {
+function SharePageContent() {
   const params = useParams();
   const router = useRouter();
   const token = params.token as string;
@@ -66,11 +68,7 @@ export default function SharePage() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center" role="status" aria-live="polite">
-        <div className="text-white">Loading…</div>
-      </div>
-    );
+    return <SharePageSkeleton />;
   }
 
   if (error || !recording) {
@@ -148,5 +146,13 @@ export default function SharePage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function SharePage() {
+  return (
+    <ErrorBoundary section="share">
+      <SharePageContent />
+    </ErrorBoundary>
   );
 }

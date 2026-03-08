@@ -5,6 +5,8 @@ import { useRecorder, RecordingOptions } from '@/hooks/useRecorder';
 import { useUpload } from '@/hooks/useUpload';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { RecordPageSkeleton } from '@/components/skeletons';
 
 const formatDuration = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
@@ -64,7 +66,7 @@ const RecordingOption = memo(function RecordingOption({
   );
 });
 
-export default function RecordPage() {
+function RecordPageContent() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -74,7 +76,7 @@ export default function RecordPage() {
     stream,
     duration,
     audioLevel,
-    error,
+    error: recorderError,
     start,
     pause,
     resume,
@@ -170,11 +172,7 @@ export default function RecordPage() {
   const videoInputs = availableDevices.filter(d => d.kind === 'videoinput');
 
   if (authLoading || !user) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center" role="status" aria-live="polite">
-        <div className="text-white">Checking session...</div>
-      </div>
-    );
+    return <RecordPageSkeleton />;
   }
 
   if (state === 'stopped' && recordedBlob) {
@@ -289,9 +287,9 @@ export default function RecordPage() {
       <div className="max-w-xl w-full bg-slate-800 rounded-xl p-6">
         <h1 className="text-2xl font-bold text-white mb-6">New Recording</h1>
         
-        {error && (
+        {recorderError && (
           <div className="mb-4 p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-300" role="alert">
-            {error}
+            {recorderError}
           </div>
         )}
         
@@ -386,5 +384,13 @@ export default function RecordPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function RecordPage() {
+  return (
+    <ErrorBoundary section="recording">
+      <RecordPageContent />
+    </ErrorBoundary>
   );
 }

@@ -2,9 +2,11 @@
 
 import { useState, useCallback, FormEvent } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { LoginSkeleton } from '@/components/skeletons';
 
-export default function LoginPage() {
-  const { login } = useAuth();
+function LoginContent() {
+  const { login, isLoading: authLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -24,6 +26,10 @@ export default function LoginPage() {
       setLoading(false);
     }
   }, [email, login]);
+
+  if (authLoading) {
+    return <LoginSkeleton />;
+  }
 
   if (sent) {
     return (
@@ -83,5 +89,13 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <ErrorBoundary section="general">
+      <LoginContent />
+    </ErrorBoundary>
   );
 }
