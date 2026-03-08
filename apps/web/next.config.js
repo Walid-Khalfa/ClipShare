@@ -61,7 +61,7 @@ const nextConfig = {
         ],
       },
       {
-        // HSTS - only in production
+        // HSTS - always in production
         source: '/(.*)',
         headers: [
           {
@@ -69,12 +69,28 @@ const nextConfig = {
             value: 'max-age=31536000; includeSubDomains; preload',
           },
         ],
-        // Only apply HSTS in production
         has: [
           {
             type: 'header',
             key: 'x-forwarded-proto',
             value: 'https',
+          },
+        ],
+      },
+      {
+        source: '/api/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          },
+          {
+            key: 'Pragma',
+            value: 'no-cache',
+          },
+          {
+            key: 'Expires',
+            value: '0',
           },
         ],
       },
@@ -85,7 +101,7 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // Next.js needs this
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.storage",
               "media-src 'self' blob: https://*.supabase.co https://*.supabase.storage",
