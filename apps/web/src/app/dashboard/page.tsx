@@ -1,10 +1,13 @@
 'use client';
 
-import { memo, useCallback, useEffect, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { Virtuoso } from 'react-virtuoso';
 import { useAuth } from '@/hooks/useAuth';
 import { useRecordings } from '@/hooks/useRecordings';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { DashboardSkeleton } from '@/components/skeletons';
 
 const StatusBadge = memo(function StatusBadge({ status }: { status: string }) {
   const statusConfig = useMemo(() => {
@@ -107,10 +110,82 @@ const RecordingCard = memo(function RecordingCard({
   );
 });
 
-export default function DashboardPage() {
+// Wrapper component for Virtuoso item
+const RecordingCardWrapper = memo(function RecordingCardWrapper({
+  recording,
+  onDelete,
+  onShare,
+  onRevokeShare,
+}: {
+  recording: {
+    id: string;
+    title: string;
+    status: string;
+    duration: number | null;
+    view_count: number;
+    share_token: string | null;
+  };
+  onDelete: (id: string) => void;
+  onShare: (id: string) => void;
+  onRevokeShare: (id: string) => void;
+}) {
+  return (
+    <RecordingCard
+      recording={recording}
+      onDelete={onDelete}
+      onShare={onShare}
+      onRevokeShare={onRevokeShare}
+    />
+  );
+});
+
+function RecordingsList({
+  recordings,
+  onDelete,
+  onShare,
+  onRevokeShare,
+}: {
+  recordings: Array<{
+    id: string;
+    title: string;
+    status: string;
+    duration: number | null;
+    view_count: number;
+    share_token: string | null;
+  }>;
+  onDelete: (id: string) => void;
+  onShare: (id: string) => void;
+  onRevokeShare: (id: string) => void;
+}) {
+  const itemContent = useCallback(
+    (index: number) => (
+      <RecordingCardWrapper
+        recording={recordings[index]}
+        onDelete={onDelete}
+        onShare={onShare}
+        onRevokeShare={onRevokeShare}
+      />
+    ),
+    [recordings, onDelete, onShare, onRevokeShare]
+  );
+
+  return (
+    <Virtuoso
+      data={recordings}
+      itemContent={itemContent}
+      style={{ height: 'calc(100vh - 200px)' }}
+      className="space-y-4"
+      role="list"
+      aria-label="Recordings list"
+    />
+  );
+}
+
+function DashboardContent() {
   const router = useRouter();
   const { user, isLoading: authLoading, logout } = useAuth();
   const { recordings, isLoading, error, mutate, pagination } = useRecordings();
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -170,12 +245,14 @@ export default function DashboardPage() {
     router.push('/');
   }, [logout, router]);
 
+  const handleLoadMore = useCallback(() => {
+    if (currentPage < pagination.pages) {
+      setCurrentPage(prev => prev + 1);
+    }
+  }, [currentPage, pagination.pages]);
+
   if (authLoading || isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center" role="status" aria-live="polite">
-        <div className="text-white">Loading…</div>
-      </div>
-    );
+    return <DashboardSkeleton cardCount={5} />;
   }
 
   return (
@@ -226,19 +303,38 @@ export default function DashboardPage() {
             </Link>
           </div>
         ) : (
-          <div className="grid gap-4" role="list" aria-label="Recordings list">
-            {recordings.map(recording => (
-              <RecordingCard
-                key={recording.id}
-                recording={recording}
+          <>
+            <div className="grid gap-4" role="list" aria-label="Recordings list">
+              <RecordingsList
+                recordings={recordings}
                 onDelete={handleDelete}
                 onShare={handleShare}
                 onRevokeShare={handleRevokeShare}
               />
-            ))}
-          </div>
+            </div>
+            
+            {pagination.pages > 1 && currentPage < pagination.pages && (
+              <div className="mt-8 flex justify-center">
+                <button
+                  onClick={handleLoadMore}
+                  className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                  aria-label="Load more recordings"
+                >
+                  Load More
+                </button>
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <ErrorBoundary section="dashboard">
+      <DashboardContent />
+    </ErrorBoundary>
   );
 }
